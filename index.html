@@ -1,0 +1,607 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>IIHM Ganaur Building Status Tracker</title>
+  <!-- Firebase for real-time updates -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 20px;
+      background-color: #f0f2f5;
+    }
+    
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 30px;
+    }
+    
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+      margin-top: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      background-color: white;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    th, td {
+      border: 1px solid #e0e0e0;
+      padding: 12px 15px;
+      text-align: center;
+    }
+    
+    th {
+      background-color: #3498db;
+      color: white;
+      font-weight: 600;
+    }
+    
+    select {
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      width: 100%;
+      background-color: #f9f9f9;
+    }
+    
+    /* Realistic LED indicator */
+    .led-container {
+      display: inline-block;
+      position: relative;
+      width: 24px;
+      height: 24px;
+      margin-right: 12px;
+    }
+    
+    .led-bulb {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #eee;
+      box-shadow: 
+        inset 0 0 10px rgba(0,0,0,0.2),
+        0 0 2px rgba(0,0,0,0.1);
+    }
+    
+    .led-glow {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .led-reflex {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.8);
+      top: 4px;
+      left: 4px;
+    }
+    
+    /* Status colors */
+    .status-Marking .led-bulb { background: #FFC107; }
+    .status-Marking .led-glow { 
+      box-shadow: 0 0 15px 5px rgba(255, 193, 7, 0.7);
+      opacity: 1;
+    }
+    
+    .status-Cutting .led-bulb { background: #FF5722; }
+    .status-Cutting .led-glow { 
+      box-shadow: 0 0 15px 5px rgba(255, 87, 34, 0.7);
+      opacity: 1;
+    }
+    
+    .status-Fitting .led-bulb { background: #2196F3; }
+    .status-Fitting .led-glow { 
+      box-shadow: 0 0 15px 5px rgba(33, 150, 243, 0.7);
+      opacity: 1;
+    }
+    
+    .status-Welding .led-bulb { background: #9C27B0; }
+    .status-Welding .led-glow { 
+      box-shadow: 0 0 15px 5px rgba(156, 39, 176, 0.7);
+      opacity: 1;
+    }
+    
+    .status-Finishing .led-bulb { background: #00BCD4; }
+    .status-Finishing .led-glow { 
+      box-shadow: 0 0 15px 5px rgba(0, 188, 212, 0.7);
+      opacity: 1;
+    }
+    
+    .status-Painting .led-bulb { background: #4CAF50; }
+    .status-Painting .led-glow { 
+      box-shadow: 0 0 15px 5px rgba(76, 175, 80, 0.7);
+      opacity: 1;
+    }
+    
+    .serial-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    tr[data-status] {
+      transition: background-color 0.3s;
+    }
+    
+    tr[data-status="Marking"] { background-color: rgba(255, 193, 7, 0.05); }
+    tr[data-status="Cutting"] { background-color: rgba(255, 87, 34, 0.05); }
+    tr[data-status="Fitting"] { background-color: rgba(33, 150, 243, 0.05); }
+    tr[data-status="Welding"] { background-color: rgba(156, 39, 176, 0.05); }
+    tr[data-status="Finishing"] { background-color: rgba(0, 188, 212, 0.05); }
+    tr[data-status="Painting"] { background-color: rgba(76, 175, 80, 0.05); }
+    
+    tr:hover {
+      background-color: #f8f9fa !important;
+    }
+    
+    @keyframes pulse {
+      0% { opacity: 0.8; }
+      50% { opacity: 1; }
+      100% { opacity: 0.8; }
+    }
+    
+    .led-glow {
+      animation: pulse 2s infinite;
+    }
+    
+    button {
+      padding: 8px 16px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    button:hover {
+      background-color: #2980b9;
+    }
+    
+    button.danger {
+      background-color: #e74c3c;
+    }
+    
+    button.danger:hover {
+      background-color: #c0392b;
+    }
+    
+    button.success {
+      background-color: #2ecc71;
+    }
+    
+    button.success:hover {
+      background-color: #27ae60;
+    }
+    
+    .login-form {
+      max-width: 400px;
+      margin: 50px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .login-form input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .last-updated {
+      font-size: 0.8em;
+      color: #7f8c8d;
+      margin-top: 5px;
+    }
+
+    /* Real-time notification */
+    .sync-notification {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #2ecc71;
+      color: white;
+      padding: 10px 15px;
+      border-radius: 4px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div id="login-section" class="login-form">
+    <h2>Admin Login</h2>
+    <input type="password" id="password" placeholder="Enter admin password">
+    <button onclick="login()">Login</button>
+    <p id="login-error" style="color: red; display: none;">Incorrect password</p>
+  </div>
+
+  <div id="tracker-section" class="hidden">
+    <h1>IIHM Ganaur - Beam Status Tracker</h1>
+    
+    <div class="controls">
+      <div>
+        <button onclick="exportToCSV()">Export to CSV</button>
+        <button onclick="showResetConfirm()" class="danger">Reset All Data</button>
+      </div>
+      <div>
+        <input type="text" id="search-input" placeholder="Search beams..." oninput="filterBeams()">
+      </div>
+    </div>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>S.NO</th>
+          <th>PART MARK</th>
+          <th>QTY.</th>
+          <th>STATUS</th>
+          <th>LAST UPDATED</th>
+        </tr>
+      </thead>
+      <tbody id="beam-table-body">
+        <!-- Rows will be generated here with JavaScript -->
+      </tbody>
+    </table>
+    
+    <div id="reset-confirm" style="display: none; margin-top: 20px;">
+      <p>Are you sure you want to reset all status data?</p>
+      <button onclick="resetData()" class="danger">Confirm Reset</button>
+      <button onclick="hideResetConfirm()">Cancel</button>
+    </div>
+  </div>
+
+  <div class="sync-notification" id="sync-notification">
+    Changes synced across all devices!
+  </div>
+</div>
+
+<script>
+  // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
+  const firebaseConfig = {
+    apiKey: "AIzaSyABC123...",
+    authDomain: "your-project.firebaseapp.com",
+    databaseURL: "https://your-project.firebaseio.com",
+    projectId: "your-project",
+    storageBucket: "your-project.appspot.com",
+    messagingSenderId: "123456789",
+    appId: "1:123456789:web:abc123def456"
+  };
+
+  // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+  const database = firebase.database();
+
+  // Beam data model with enhanced storage
+  const beamData = (() => {
+    const STORAGE_KEY = 'iihm_beam_tracker_data_v2';
+    const ADMIN_PASSWORD = 'admin123'; // Change this to a more secure password
+    
+    // Default beams data - you should include all your beams here
+    const DEFAULT_BEAMS = [
+      { id: 1, partMark: "B4", qty: 1, status: "", lastUpdated: null },
+      { id: 2, partMark: "B9", qty: 1, status: "", lastUpdated: null },
+      // ... include all your beams
+      { id: 71, partMark: "B303", qty: 1, status: "", lastUpdated: null }
+    ];
+    
+    // Load data from localStorage or initialize
+    let beams = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!beams || !Array.isArray(beams) || beams.length === 0) {
+      beams = DEFAULT_BEAMS;
+      saveData();
+    }
+    
+    // Migrate from old version if needed
+    const oldData = JSON.parse(localStorage.getItem('iihm_beam_tracker_data'));
+    if (oldData && !beams.some(b => b.lastUpdated)) {
+      beams = beams.map(beam => {
+        const oldBeam = oldData.find(b => b.id === beam.id);
+        return {
+          ...beam,
+          status: oldBeam?.status || "",
+          lastUpdated: oldBeam?.status ? new Date().toISOString() : null
+        };
+      });
+      saveData();
+      localStorage.removeItem('iihm_beam_tracker_data');
+    }
+    
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(beams));
+      // Sync to Firebase if admin is logged in
+      if (isAdmin) {
+        database.ref('beams').set(beams).then(() => {
+          showSyncNotification();
+        });
+      }
+    }
+    
+    return {
+      getAllBeams: () => beams,
+      getBeam: (id) => beams.find(b => b.id === id),
+      updateStatus: (id, status) => {
+        const beam = beams.find(b => b.id === id);
+        if (beam) {
+          beam.status = status;
+          beam.lastUpdated = new Date().toISOString();
+          saveData();
+          return true;
+        }
+        return false;
+      },
+      resetData: () => {
+        beams = DEFAULT_BEAMS.map(beam => ({
+          ...beam,
+          status: "",
+          lastUpdated: null
+        }));
+        saveData();
+        return beams;
+      },
+      checkPassword: (password) => password === ADMIN_PASSWORD,
+      changePassword: (newPassword) => {
+        ADMIN_PASSWORD = newPassword;
+      }
+    };
+  })();
+
+  // Status options
+  const statusOptions = [
+    { value: "", text: "Select Status" },
+    { value: "Marking", text: "Marking" },
+    { value: "Cutting", text: "Cutting" },
+    { value: "Fitting", text: "Fitting" },
+    { value: "Welding", text: "Welding" },
+    { value: "Finishing", text: "Finishing" },
+    { value: "Painting", text: "Painting" }
+  ];
+
+  // DOM elements
+  const loginSection = document.getElementById('login-section');
+  const trackerSection = document.getElementById('tracker-section');
+  const passwordInput = document.getElementById('password');
+  const loginError = document.getElementById('login-error');
+  const syncNotification = document.getElementById('sync-notification');
+  let isAdmin = false;
+
+  // Real-time listener for changes
+  database.ref('beams').on('value', (snapshot) => {
+    if (!isAdmin) return; // Only update if not the admin making changes
+    
+    const remoteData = snapshot.val();
+    if (remoteData && Array.isArray(remoteData)) {
+      localStorage.setItem(beamData.STORAGE_KEY, JSON.stringify(remoteData));
+      renderBeamTable(remoteData);
+    }
+  });
+
+  function showSyncNotification() {
+    syncNotification.style.display = 'block';
+    setTimeout(() => {
+      syncNotification.style.display = 'none';
+    }, 3000);
+  }
+
+  // Check if already logged in (simple session)
+  if (sessionStorage.getItem('isAdmin') === 'true') {
+    login();
+  }
+
+  // Login function
+  function login() {
+    if (beamData.checkPassword(passwordInput.value)) {
+      isAdmin = true;
+      sessionStorage.setItem('isAdmin', 'true');
+      loginSection.classList.add('hidden');
+      trackerSection.classList.remove('hidden');
+      renderBeamTable();
+    } else {
+      loginError.style.display = 'block';
+    }
+  }
+
+  // Render the table
+  function renderBeamTable(beamsToRender = null) {
+    const tbody = document.getElementById('beam-table-body');
+    tbody.innerHTML = '';
+    
+    const beams = beamsToRender || beamData.getAllBeams();
+    
+    beams.forEach(beam => {
+      const row = document.createElement('tr');
+      row.dataset.id = beam.id;
+      if (beam.status) row.dataset.status = beam.status;
+      
+      // S.NO with LED
+      const td1 = document.createElement('td');
+      td1.className = 'serial-cell';
+      
+      const ledContainer = document.createElement('div');
+      ledContainer.className = 'led-container';
+      if (beam.status) ledContainer.classList.add(`status-${beam.status}`);
+      
+      const ledBulb = document.createElement('div');
+      ledBulb.className = 'led-bulb';
+      
+      const ledGlow = document.createElement('div');
+      ledGlow.className = 'led-glow';
+      
+      const ledReflex = document.createElement('div');
+      ledReflex.className = 'led-reflex';
+      
+      ledContainer.appendChild(ledBulb);
+      ledContainer.appendChild(ledGlow);
+      ledContainer.appendChild(ledReflex);
+      
+      td1.appendChild(ledContainer);
+      td1.appendChild(document.createTextNode(beam.id));
+      row.appendChild(td1);
+      
+      // PART MARK
+      const td2 = document.createElement('td');
+      td2.textContent = beam.partMark;
+      row.appendChild(td2);
+      
+      // QTY
+      const td3 = document.createElement('td');
+      td3.textContent = beam.qty;
+      row.appendChild(td3);
+      
+      // STATUS dropdown
+      const td4 = document.createElement('td');
+      const select = document.createElement('select');
+      select.dataset.beamId = beam.id;
+      
+      statusOptions.forEach(option => {
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.text;
+        if (beam.status === option.value) opt.selected = true;
+        select.appendChild(opt);
+      });
+      
+      select.addEventListener('change', (e) => {
+        if (!isAdmin) {
+          alert('Please login as admin to make changes');
+          e.target.value = beam.status || '';
+          return;
+        }
+        
+        const beamId = parseInt(e.target.dataset.beamId);
+        const status = e.target.value;
+        
+        if (beamData.updateStatus(beamId, status)) {
+          // Update UI
+          const row = e.target.closest('tr');
+          if (status) {
+            row.dataset.status = status;
+            const ledContainer = row.querySelector('.led-container');
+            // Remove all status classes first
+            statusOptions.slice(1).forEach(opt => {
+              ledContainer.classList.remove(`status-${opt.value}`);
+            });
+            ledContainer.classList.add(`status-${status}`);
+            
+            // Update last updated cell
+            const lastUpdatedCell = row.querySelector('.last-updated-cell');
+            if (lastUpdatedCell) {
+              lastUpdatedCell.innerHTML = formatLastUpdated(new Date().toISOString());
+            }
+          } else {
+            delete row.dataset.status;
+            const ledContainer = row.querySelector('.led-container');
+            statusOptions.slice(1).forEach(opt => {
+              ledContainer.classList.remove(`status-${opt.value}`);
+            });
+          }
+        }
+      });
+      
+      td4.appendChild(select);
+      row.appendChild(td4);
+      
+      // LAST UPDATED
+      const td5 = document.createElement('td');
+      td5.className = 'last-updated-cell';
+      td5.innerHTML = beam.lastUpdated ? formatLastUpdated(beam.lastUpdated) : '-';
+      row.appendChild(td5);
+      
+      tbody.appendChild(row);
+    });
+  }
+
+  function formatLastUpdated(dateString) {
+    const date = new Date(dateString);
+    return `
+      ${date.toLocaleDateString()}
+      <div class="last-updated">${date.toLocaleTimeString()}</div>
+    `;
+  }
+
+  function showResetConfirm() {
+    if (!isAdmin) {
+      alert('Please login as admin to reset data');
+      return;
+    }
+    document.getElementById('reset-confirm').style.display = 'block';
+  }
+
+  function hideResetConfirm() {
+    document.getElementById('reset-confirm').style.display = 'none';
+  }
+
+  function resetData() {
+    beamData.resetData();
+    renderBeamTable();
+    hideResetConfirm();
+    alert('All data has been reset to default');
+  }
+
+  function filterBeams() {
+    const searchTerm = document.getElementById('search-input').value.toLowerCase();
+    const filteredBeams = beamData.getAllBeams().filter(beam => 
+      beam.partMark.toLowerCase().includes(searchTerm) || 
+      beam.id.toString().includes(searchTerm) ||
+      (beam.status && beam.status.toLowerCase().includes(searchTerm))
+    );
+    renderBeamTable(filteredBeams);
+  }
+
+  function exportToCSV() {
+    const beams = beamData.getAllBeams();
+    let csv = 'S.No,Part Mark,Quantity,Status,Last Updated\n';
+    
+    beams.forEach(beam => {
+      csv += `"${beam.id}","${beam.partMark}","${beam.qty}","${beam.status || ''}","${beam.lastUpdated || ''}"\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `beam_status_${new Date().toISOString().slice(0,10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // Initialize the table if logged in
+  if (isAdmin) {
+    renderBeamTable();
+  }
+</script>
+
+</body>
+</html>
